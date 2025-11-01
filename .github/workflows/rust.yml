@@ -1,0 +1,59 @@
+name: Rust Release
+
+on:
+  push:
+    tags:
+      - 'v*'   # wird bei Push von Tags wie v1.0.0 ausgelöst
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build and Release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            artifact_name: sc_log_analyzer-linux
+            binary_path: target/release/sc_log_analyzer
+          - os: windows-latest
+            artifact_name: sc_log_analyzer-windows.exe
+            binary_path: target/release/sc_log_analyzer.exe
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.binary_path }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
