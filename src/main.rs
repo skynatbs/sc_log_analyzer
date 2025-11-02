@@ -28,6 +28,7 @@ fn main() -> eframe::Result<()> {
 struct LogApp {
     file_path_input: String,
     events: Vec<PlayerEvent>,
+    app_version: String,
     filter_show_kills: bool,
     filter_show_spawns: bool,
     filter_show_corpse: bool,
@@ -54,6 +55,7 @@ impl LogApp {
         let mut app = Self {
             file_path_input: initial_path,
             events: Vec::new(),
+            app_version: env!("SC_LOG_ANALYZER_VERSION").to_string(),
             filter_show_kills: true,
             filter_show_spawns: true,
             filter_show_corpse: true,
@@ -352,6 +354,12 @@ impl LogApp {
 
 impl eframe::App for LogApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Keep the app ticking so background refresh and worker updates still run when unfocused.
+        let wake_interval = self
+            .auto_refresh_interval
+            .min(Duration::from_millis(250));
+        ctx.request_repaint_after(wake_interval);
+
         self.poll_player_info_responses();
         self.maybe_refresh();
 
@@ -362,6 +370,14 @@ impl eframe::App for LogApp {
                 .rounding(egui::Rounding::same(6.0))
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(format!("Version: {}", self.app_version))
+                                    .color(Color32::from_rgb(160, 160, 160)),
+                            );
+                        });
+                        ui.add_space(4.0);
+
                         ui.horizontal_wrapped(|ui| {
                             ui.label(
                                 RichText::new("Log file:").color(Color32::from_rgb(210, 210, 210)),

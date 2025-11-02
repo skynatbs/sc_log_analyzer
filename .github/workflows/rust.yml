@@ -8,9 +8,15 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build and Release
+    permissions:
+      contents: read
+      actions: read
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -43,8 +49,12 @@ jobs:
   release:
     name: Create GitHub Release
     needs: build
+    permissions:
+      contents: write
+      actions: read
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
@@ -55,5 +65,6 @@ jobs:
         with:
           files: |
             artifacts/**/*
+          token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
