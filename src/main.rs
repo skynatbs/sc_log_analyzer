@@ -38,6 +38,7 @@ struct LogApp {
     filter_show_vehicle_destruction: bool,
     search_text: String,
     ignored_player: String,
+    ignored_player_user_override: bool,
     load_error: Option<String>,
     auto_refresh_interval: Duration,
     last_auto_check: Instant,
@@ -51,6 +52,11 @@ struct LogApp {
 impl LogApp {
     fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         let initial_path = settings::load_last_log_path().unwrap_or_else(|| "Game.log".to_string());
+        let (initial_ignored_player, ignored_player_user_override) =
+            match settings::load_ignored_player() {
+                Some(value) => (value, true),
+                None => (String::new(), false),
+            };
         let (player_info_tx, player_info_rx) = mpsc::channel();
         let mut app = Self {
             file_path_input: initial_path,
@@ -64,7 +70,8 @@ impl LogApp {
             filter_show_hits: true,
             filter_show_vehicle_destruction: true,
             search_text: String::new(),
-            ignored_player: String::new(),
+            ignored_player: initial_ignored_player,
+            ignored_player_user_override,
             load_error: None,
             auto_refresh_interval: Duration::from_secs(2),
             last_auto_check: Instant::now(),
@@ -89,9 +96,12 @@ impl LogApp {
         match parse_log(&path) {
             Ok(parsed) => {
                 self.events = parsed.events;
-                if self.ignored_player.trim().is_empty() {
+                if !self.ignored_player_user_override {
                     if let Some(nickname) = parsed.primary_nickname {
-                        self.ignored_player = nickname;
+                        let trimmed = nickname.trim();
+                        if !trimmed.is_empty() {
+                            self.ignored_player = trimmed.to_string();
+                        }
                     }
                 }
                 self.load_error = None;
@@ -108,6 +118,15 @@ impl LogApp {
             }
         }
         self.last_auto_check = Instant::now();
+    }
+
+    fn persist_ignored_player(&self) {
+        if !self.ignored_player_user_override {
+            return;
+        }
+        if let Err(err) = settings::save_ignored_player(&self.ignored_player) {
+            eprintln!("Failed to persist ignored player: {}", err);
+        }
     }
 
     fn filtered_events(&self) -> Vec<PlayerEvent> {
@@ -355,9 +374,7 @@ impl LogApp {
 impl eframe::App for LogApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Keep the app ticking so background refresh and worker updates still run when unfocused.
-        let wake_interval = self
-            .auto_refresh_interval
-            .min(Duration::from_millis(250));
+        let wake_interval = self.auto_refresh_interval.min(Duration::from_millis(250));
         ctx.request_repaint_after(wake_interval);
 
         self.poll_player_info_responses();
@@ -473,7 +490,12 @@ impl eframe::App for LogApp {
                                 RichText::new("Ignore player:")
                                     .color(Color32::from_rgb(210, 210, 210)),
                             );
-                            ui.add(egui::TextEdit::singleline(&mut self.ignored_player));
+                            let response =
+                                ui.add(egui::TextEdit::singleline(&mut self.ignored_player));
+                            if response.changed() {
+                                self.ignored_player_user_override = true;
+                                self.persist_ignored_player();
+                            }
                             if ui
                                 .add(
                                     egui::Button::new(RichText::new("Clear").color(Color32::WHITE))
@@ -482,6 +504,8 @@ impl eframe::App for LogApp {
                                 .clicked()
                             {
                                 self.ignored_player.clear();
+                                self.ignored_player_user_override = true;
+                                self.persist_ignored_player();
                             }
                         });
 
