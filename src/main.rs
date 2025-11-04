@@ -1,5 +1,7 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 use chrono::{DateTime, Utc};
-use eframe::egui::{self, Color32, RichText, Sense};
+use eframe::egui::{self, Color32, IconData, RichText, Sense};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rfd::FileDialog;
@@ -9,7 +11,10 @@ use std::{
     fs::File,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
-    sync::mpsc::{self, Receiver, Sender},
+    sync::{
+        Arc,
+        mpsc::{self, Receiver, Sender},
+    },
     time::{Duration, Instant, SystemTime},
 };
 
@@ -17,12 +22,30 @@ mod player_info;
 mod settings;
 
 fn main() -> eframe::Result<()> {
-    let native_options = eframe::NativeOptions::default();
+    let mut native_options = eframe::NativeOptions {
+        ..Default::default()
+    };
+
+    if let Some(icon) = load_app_icon() {
+        native_options.viewport = native_options.viewport.clone().with_icon(Arc::new(icon));
+    }
     eframe::run_native(
         "SC Log Analyzer",
         native_options,
         Box::new(|cc| Box::new(LogApp::new(cc))),
     )
+}
+
+fn load_app_icon() -> Option<IconData> {
+    const ICON_BYTES: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icon.png"));
+    let image = image::load_from_memory(ICON_BYTES).ok()?.into_rgba8();
+    let (width, height) = image.dimensions();
+
+    Some(IconData {
+        rgba: image.into_raw(),
+        width,
+        height,
+    })
 }
 
 struct LogApp {
